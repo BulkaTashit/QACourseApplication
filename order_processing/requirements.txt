@@ -1,0 +1,5 @@
+fastapi~=0.103.2
+uvicorn
+asyncpg~=0.28.0
+aiokafka~=0.10.0
+aioredis~=1.3.0
