@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-
+import asyncpg
 import aio_pika
 
 from aio_pika import IncomingMessage
@@ -124,24 +124,28 @@ async def increase_item_quantity(item_id: int, quantity_to_add: int, db=Depends(
 
 @app.get("/items/{item_id}")
 async def get_item_by_id(item_id: int, db=Depends(get_database)):
-    async with db.transaction():
-        # Получаем информацию о товаре по его идентификатору
-        result = await db.execute("SELECT id, item, quantity, price FROM items WHERE id = $1", item_id)
-        item = result.fetchone()
+    # Получаем информацию о товаре по его идентификатору
+    query = "SELECT id, item, quantity, price FROM items WHERE id = $1"
 
-        # Проверяем, существует ли товар с указанным идентификатором
-        if not item:
-            raise HTTPException(status_code=404, detail="Товар с указанным идентификатором не найден")
+    try:
+        result = await db.fetchrow(query, item_id)
+    except asyncpg.exceptions.PostgresError as e:
+        # Обработка ошибок PostgreSQL
+        raise HTTPException(status_code=500, detail=f"Ошибка при выполнении запроса: {str(e)}")
 
-        # Формируем ответ
-        response_data = {
-            "id": item[0],
-            "item": item[1],
-            "quantity": item[2],
-            "price": item[3]
-        }
+    # Проверяем, существует ли товар с указанным идентификатором
+    if not result:
+        raise HTTPException(status_code=404, detail="Товар с указанным идентификатором не найден")
 
-        return response_data
+    # Формируем ответ
+    response_data = {
+        "id": result["id"],
+        "item": result["item"],
+        "quantity": result["quantity"],
+        "price": result["price"]
+    }
+
+    return response_data
 
 
 @app.on_event("startup")

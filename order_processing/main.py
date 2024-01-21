@@ -62,7 +62,7 @@ async def consume(redis: aioredis.Redis):
 async def startup():
     redis = await aioredis.create_redis_pool((REDIS_HOST, REDIS_PORT))
 
-    await asyncio.sleep(15)
+    await asyncio.sleep(20)
 
     asyncio.create_task(consume(redis))
 
