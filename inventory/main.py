@@ -53,24 +53,25 @@ async def on_message(message: aio_pika.IncomingMessage):
 
 async def consume_queue():
     # Подключение к RabbitMQ
-    try:
-        connection = await aio_pika.connect_robust(
-            host=RABBITMQ_HOST,
-            port=RABBITMQ_PORT,
-            login=RABBITMQ_USER,
-            password=RABBITMQ_PASSWORD,
-        )
-        print("Connection to RabbitMQ successful.")
+    connection = None
+    while connection is None:
+        try:
+            connection = await aio_pika.connect(
+                host=RABBITMQ_HOST,
+                port=RABBITMQ_PORT,
+                login=RABBITMQ_USER,
+                password=RABBITMQ_PASSWORD,
+            )
+            print("Connection to RabbitMQ successful.")
+        except aio_pika.exceptions.CONNECTION_EXCEPTIONS:
+            print("Waiting for RabbitMQ to start...")
+            await asyncio.sleep(1)
 
-        channel = await connection.channel()
-        queue = await channel.declare_queue(RABBITMQ_QUEUE, durable=True)
+    channel = await connection.channel()
+    queue = await channel.declare_queue(RABBITMQ_QUEUE, durable=True)
 
-        print("Setting up RabbitMQ consumer")
-
-        await queue.consume(on_message)
-
-    except Exception as e:
-        print(f"Error connecting to RabbitMQ: {e}")
+    print("Setting up RabbitMQ consumer")
+    await queue.consume(on_message)
 
 
 @app.post("/items/")
@@ -160,8 +161,6 @@ async def startup():
                     )
                 """)
     print("Database setup complete")
-
-    await asyncio.sleep(10)
 
     asyncio.create_task(consume_queue())
 

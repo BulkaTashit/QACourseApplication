@@ -7,12 +7,18 @@ from models import Payment
 from database import get_database
 from rabbitmq import get_rabbit_channel
 
-
 app = FastAPI()
+
+# Параметры подключения к RabbitMQ
+RABBITMQ_HOST = 'rabbitmq-container'
+RABBITMQ_PORT = 5672
+RABBITMQ_QUEUE = 'inventory_queue'
+RABBITMQ_USER = 'guest'
+RABBITMQ_PASSWORD = 'guest'
 
 
 @app.on_event("startup")
-async def startup_db_client():
+async def startup():
     db = await get_database()
     await db.execute("""
             CREATE TABLE IF NOT EXISTS payments (
@@ -22,6 +28,20 @@ async def startup_db_client():
                 item_id integer
             )
         """)
+
+    connection = None
+    while connection is None:
+        try:
+            connection = await aio_pika.connect(
+                host=RABBITMQ_HOST,
+                port=RABBITMQ_PORT,
+                login=RABBITMQ_USER,
+                password=RABBITMQ_PASSWORD,
+            )
+            print("Connection to RabbitMQ successful.")
+        except Exception as e:
+            print(f"Waiting for RabbitMQ to start: {e}")
+            await asyncio.sleep(1)
 
 
 @app.post("/payments/")
