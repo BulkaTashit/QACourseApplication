@@ -77,18 +77,19 @@ async def consume_queue():
 @app.post("/items/")
 async def create_item(item: Item, db=Depends(get_database)):
     async with db.transaction():
-        result = await db.execute(
+        result = await db.fetchval(
             "INSERT INTO items (item, quantity, price) VALUES ($1, $2, $3) RETURNING id",
             item.item,
             item.quantity,
             item.price,
         )
-        print(result)
+        print(f"ProductAdded with id {result}")
+        items_id = result
 
     message_body = f"ProductAdded: {item.item}, {item.quantity}, {item.price}"
 
-    response_message = "Товар успешно добавлен"
-    return {"message": response_message}
+    response_message = {"id": items_id, "status": "success", "message": message_body}
+    return response_message
 
 
 @app.delete("/items/{item_id}")
