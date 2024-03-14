@@ -6,10 +6,14 @@ import aio_pika
 
 from aio_pika import IncomingMessage
 from fastapi import FastAPI, Depends, HTTPException
-from models import Item
+from fastapi_jwt_auth import AuthJWT
+from fastapi_jwt_auth.exceptions import MissingTokenError
+
+from models import Item, User, Settings
 from database import get_database
 
 app = FastAPI()
+
 
 # Параметры подключения к RabbitMQ
 RABBITMQ_HOST = 'rabbitmq-container'
@@ -73,9 +77,38 @@ async def consume_queue():
     print("Setting up RabbitMQ consumer")
     await queue.consume(on_message)
 
+@AuthJWT.load_config
+def get_config():
+    return Settings()
+@app.post('/auth')
+async def auth(user: User, Authorize: AuthJWT = Depends(), db=Depends(get_database)):
+    # Проверка имени пользователя и пароля ()
+    async with db.transaction():
+        user_db = await db.fetchrow("SELECT * FROM auth WHERE login = $1", user.username)
+
+        if user_db is None or user_db["password"] != user.password:
+            raise HTTPException(status_code=401, detail="Неверное имя пользователя или пароль")
+
+    # Создание токена
+    access_token = Authorize.create_access_token(subject=user.username)
+    return {"access_token": access_token}
 
 @app.post("/items/")
-async def create_item(item: Item, db=Depends(get_database)):
+async def create_item(item: Item, db=Depends(get_database), Authorize: AuthJWT = Depends()):
+    try:
+        # Проверяем наличие JWT токена
+        Authorize.jwt_required()
+    except MissingTokenError:
+        # Если токен отсутствует, возвращаем ошибку "Вы не авторизованы"
+        raise HTTPException(status_code=401, detail="Вы не авторизованы")
+
+        # Получаем подтвержденные данные из JWT
+    current_user = Authorize.get_jwt_subject()
+
+    # Проверяем наличие пользователя в JWT
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Вы не авторизованы")
+
     async with db.transaction():
         result = await db.fetchval(
             "INSERT INTO items (item, quantity, price) VALUES ($1, $2, $3) RETURNING id",
@@ -93,7 +126,21 @@ async def create_item(item: Item, db=Depends(get_database)):
 
 
 @app.delete("/items/{item_id}")
-async def delete_item(item_id: int, quantity_to_reduce: int = 1):
+async def delete_item(item_id: int, quantity_to_reduce: int = 1, Authorize: AuthJWT = Depends()):
+    try:
+        # Проверяем наличие JWT токена
+        Authorize.jwt_required()
+    except MissingTokenError:
+        # Если токен отсутствует, возвращаем ошибку "Вы не авторизованы"
+        raise HTTPException(status_code=401, detail="Вы не авторизованы")
+
+        # Получаем подтвержденные данные из JWT
+    current_user = Authorize.get_jwt_subject()
+
+    # Проверяем наличие пользователя в JWT
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Вы не авторизованы")
+
     db = await get_database()
     async with db.transaction():
         # Получаем текущее количество товара
@@ -125,7 +172,20 @@ async def increase_item_quantity(item_id: int, quantity_to_add: int, db=Depends(
 
 
 @app.get("/items/{item_id}")
-async def get_item_by_id(item_id: int, db=Depends(get_database)):
+async def get_item_by_id(item_id: int, db=Depends(get_database), Authorize: AuthJWT = Depends()):
+    try:
+        # Проверяем наличие JWT токена
+        Authorize.jwt_required()
+    except MissingTokenError:
+        # Если токен отсутствует, возвращаем ошибку "Вы не авторизованы"
+        raise HTTPException(status_code=401, detail="Вы не авторизованы")
+
+        # Получаем подтвержденные данные из JWT
+    current_user = Authorize.get_jwt_subject()
+
+    # Проверяем наличие пользователя в JWT
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Вы не авторизованы")
     # Получаем информацию о товаре по его идентификатору
     query = "SELECT id, item, quantity, price FROM items WHERE id = $1"
 
@@ -159,6 +219,14 @@ async def startup():
                             item text,
                             quantity int,
                             price numeric
+                    )
+                """)
+
+    await db.execute("""
+                        CREATE TABLE IF NOT EXISTS auth (
+                            id serial PRIMARY KEY,
+                            login text,
+                            password text
                     )
                 """)
     print("Database setup complete")
