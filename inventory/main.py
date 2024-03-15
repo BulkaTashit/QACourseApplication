@@ -159,15 +159,15 @@ async def delete_item(item_id: int, quantity_to_reduce: int = 1, Authorize: Auth
 
 
 @app.put("/items/{item_id}")
-async def increase_item_quantity(item_id: int, quantity_to_add: int, db=Depends(get_database)):
-    if quantity_to_add <= 0:
-        raise HTTPException(status_code=400, detail="Количество для добавления должно быть положительным числом")
+async def set_item_quantity(item_id: int, quantity: int, db=Depends(get_database)):
+    if quantity < 0:
+        raise HTTPException(status_code=400, detail="Количество товара должно быть неотрицательным числом")
 
     async with db.transaction():
-        # Увеличиваем количество товара в базе данных
-        await db.execute("UPDATE items SET quantity = quantity + $1 WHERE id = $2", quantity_to_add, item_id)
+        # Устанавливаем количество товара в базе данных
+        await db.execute("UPDATE items SET quantity = $1 WHERE id = $2", quantity, item_id)
 
-        response_message = f"Количество товара с идентификатором {item_id} успешно увеличено на {quantity_to_add}"
+        response_message = f"Количество товара с идентификатором {item_id} установлено в {quantity}"
         return {"message": response_message}
 
 
@@ -221,6 +221,7 @@ async def startup():
                             price numeric
                     )
                 """)
+    await asyncio.sleep(10)
 
     await db.execute("""
                         CREATE TABLE IF NOT EXISTS auth (
