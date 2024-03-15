@@ -14,7 +14,6 @@ from database import get_database
 
 app = FastAPI()
 
-
 # Параметры подключения к RabbitMQ
 RABBITMQ_HOST = 'rabbitmq-container'
 RABBITMQ_PORT = 5672
@@ -39,7 +38,7 @@ async def delete_quantity_message(message: IncomingMessage):
             item_id = int(payment_data["item_id"])
 
             # Код для обработки платежа
-            await delete_item(item_id, amount)
+            await delete_items_quantity(item_id, amount)
 
         except json.JSONDecodeError as json_error:
             logging.warning(f"Invalid JSON format. Skipping processing. {payload} {type(payload)}")
@@ -77,9 +76,12 @@ async def consume_queue():
     print("Setting up RabbitMQ consumer")
     await queue.consume(on_message)
 
+
 @AuthJWT.load_config
 def get_config():
     return Settings()
+
+
 @app.post('/auth')
 async def auth(user: User, Authorize: AuthJWT = Depends(), db=Depends(get_database)):
     # Проверка имени пользователя и пароля ()
@@ -92,6 +94,7 @@ async def auth(user: User, Authorize: AuthJWT = Depends(), db=Depends(get_databa
     # Создание токена
     access_token = Authorize.create_access_token(subject=user.username)
     return {"access_token": access_token}
+
 
 @app.post("/items/")
 async def create_item(item: Item, db=Depends(get_database), Authorize: AuthJWT = Depends()):
@@ -126,7 +129,33 @@ async def create_item(item: Item, db=Depends(get_database), Authorize: AuthJWT =
 
 
 @app.delete("/items/{item_id}")
-async def delete_item(item_id: int, quantity_to_reduce: int = 1, Authorize: AuthJWT = Depends()):
+async def delete_item(item_id: int, db=Depends(get_database), Authorize: AuthJWT = Depends()):
+    try:
+        # Проверяем наличие JWT токена
+        Authorize.jwt_required()
+    except MissingTokenError:
+        # Если токен отсутствует, возвращаем ошибку "Вы не авторизованы"
+        raise HTTPException(status_code=401, detail="Вы не авторизованы")
+
+    # Получаем подтвержденные данные из JWT
+    current_user = Authorize.get_jwt_subject()
+
+    # Проверяем наличие пользователя в JWT
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Вы не авторизованы")
+
+    async with db.transaction():
+        # Проверяем, существует ли ресурс с указанным ID
+        existing_item = await db.execute("DELETE FROM items WHERE id = $1", item_id)
+        if not existing_item:
+            raise HTTPException(status_code=404, detail=f"Ресурса с ID {item_id} не найдено")
+
+    response_message = {"status": "success", "message": f"Ресурс с ID {item_id} успешно удален"}
+    return response_message
+
+
+@app.delete("/items/delete_items_quantity/{item_id}")
+async def delete_items_quantity(item_id: int, quantity_to_reduce: int = 1, Authorize: AuthJWT = Depends()):
     try:
         # Проверяем наличие JWT токена
         Authorize.jwt_required()
@@ -167,7 +196,7 @@ async def set_item_quantity(item_id: int, quantity: int, db=Depends(get_database
         # Устанавливаем количество товара в базе данных
         await db.execute("UPDATE items SET quantity = $1 WHERE id = $2", quantity, item_id)
 
-        response_message = f"Количество товара с идентификатором {item_id} установлено в {quantity}"
+        response_message = f"Количество товара с идентификатором {item_id} установлено равным {quantity}"
         return {"message": response_message}
 
 
@@ -234,8 +263,8 @@ async def startup():
 
     asyncio.create_task(consume_queue())
 
+
 if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(app, host="0.0.0.0", port=8001)
-
