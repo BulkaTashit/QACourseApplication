@@ -156,19 +156,6 @@ async def delete_item(item_id: int, db=Depends(get_database), Authorize: AuthJWT
 
 @app.delete("/items/delete_items_quantity/{item_id}")
 async def delete_items_quantity(item_id: int, quantity_to_reduce: int = 1, Authorize: AuthJWT = Depends()):
-    try:
-        # Проверяем наличие JWT токена
-        Authorize.jwt_required()
-    except MissingTokenError:
-        # Если токен отсутствует, возвращаем ошибку "Вы не авторизованы"
-        raise HTTPException(status_code=401, detail="Вы не авторизованы")
-
-        # Получаем подтвержденные данные из JWT
-    current_user = Authorize.get_jwt_subject()
-
-    # Проверяем наличие пользователя в JWT
-    if not current_user:
-        raise HTTPException(status_code=401, detail="Вы не авторизованы")
 
     db = await get_database()
     async with db.transaction():

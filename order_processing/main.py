@@ -43,7 +43,7 @@ async def process_order_message(order_data: bytes, redis: aioredis.Redis):
 
 async def consume(redis: aioredis.Redis):
     consumer = AIOKafkaConsumer(
-        ORDER_TOPIC, bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS)
+        ORDER_TOPIC, bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS, group_id="my-consumer-group")
     await consumer.start()
     try:
         print("Kafka Consumer started successfully.")
