@@ -186,6 +186,11 @@ async def set_item_quantity(item_id: int, quantity: int, db=Depends(get_database
         response_message = f"Количество товара с идентификатором {item_id} установлено равным {quantity}"
         return {"message": response_message}
 
+@app.get("/items/")
+async def read_items(q: str = None, limit: int = 10):
+    return {"query": q, "limit": limit}
+
+
 
 @app.get("/items/{item_id}")
 async def get_item_by_id(item_id: int, db=Depends(get_database), Authorize: AuthJWT = Depends()):
