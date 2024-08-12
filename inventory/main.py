@@ -187,7 +187,7 @@ async def set_item_quantity(item_id: int, quantity: int, db=Depends(get_database
 
 
 @app.get("/items/")
-async def get_item_query_param(q: str = None, limit: int = 10, db=Depends(get_database),
+async def get_item_query_param(item: str = None, price: int = None, db=Depends(get_database),
                                Authorize: AuthJWT = Depends()):
     try:
         # Проверяем наличие JWT токена
@@ -203,7 +203,19 @@ async def get_item_query_param(q: str = None, limit: int = 10, db=Depends(get_da
     if not current_user:
         raise HTTPException(status_code=401, detail="Вы не авторизованы")
 
-    return {"query": q, "limit": limit}
+    query = f"SELECT id, item, quantity, price FROM items where item like '%{item}%' and price = {price};"
+
+    try:
+        results = await db.fetch(query)
+    except asyncpg.exceptions.PostgresError as e:
+        # Обработка ошибок PostgreSQL
+        raise HTTPException(status_code=500, detail=f"Ошибка при выполнении запроса: {str(e)}")
+
+        # Проверяем, существует ли товары с указанными данными
+    if not results:
+        raise HTTPException(status_code=404, detail=f"Товары с параметрами {item} и со стоимостью {price} не найдены")
+
+    return [dict(row) for row in results]
 
 
 @app.get("/items/{item_id}")
