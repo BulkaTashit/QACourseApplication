@@ -186,7 +186,7 @@ async def set_item_quantity(item_id: int, quantity: int, db=Depends(get_database
         return {"message": response_message}
 
 
-@app.get("/items/")
+@app.get("/items")
 async def get_item_query_param(item: str = None, price: int = None, db=Depends(get_database),
                                Authorize: AuthJWT = Depends()):
     try:
