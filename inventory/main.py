@@ -3,9 +3,10 @@ import json
 import logging
 import asyncpg
 import aio_pika
+import random
 
 from aio_pika import IncomingMessage
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Response
 from fastapi_jwt_auth import AuthJWT
 from fastapi_jwt_auth.exceptions import MissingTokenError
 
@@ -97,7 +98,7 @@ async def auth(user: User, Authorize: AuthJWT = Depends(), db=Depends(get_databa
 
 
 @app.post("/items/")
-async def create_item(item: Item, db=Depends(get_database), Authorize: AuthJWT = Depends()):
+async def create_item(item: Item, response: Response, db=Depends(get_database), Authorize: AuthJWT = Depends(), ):
     try:
         # Проверяем наличие JWT токена
         Authorize.jwt_required()
@@ -121,6 +122,7 @@ async def create_item(item: Item, db=Depends(get_database), Authorize: AuthJWT =
         )
         print(f"ProductAdded with id {result}")
         items_id = result
+    response.set_cookie(key="my_cookie", value=f"cookie_value_{random.randint(100, 999)}")
 
     message_body = f"ProductAdded: {item.item}, {item.quantity}, {item.price}"
 
