@@ -96,3 +96,29 @@ services:
     depends_on:
       - kafka
       - redis
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: clickhouse-container
+    environment:
+      - CLICKHOUSE_DB=default
+      - CLICKHOUSE_USER=default  # Имя пользователя для подключения
+      - CLICKHOUSE_PASSWORD=your_secure_password  # Пароль для подключения
+    ports:
+      - "8123:8123"  # HTTP порт
+      - "9000:9000"  # TCP порт для запросов
+      - "9009:9009"  # Порт для безопасных соединений
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse  # Персистентные данные
+
+  order_stats:
+    build: ./order_stats
+    container_name: order_stats
+    ports:
+      - "8005:8005"
+    depends_on:
+      - kafka
+      - clickhouse
+
+volumes:
+  clickhouse_data:
