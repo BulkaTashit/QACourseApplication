@@ -8,8 +8,7 @@ from aio_pika import IncomingMessage
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi_jwt_auth import AuthJWT
 from fastapi_jwt_auth.exceptions import MissingTokenError
-from pydantic import BaseModel
-from typing import Optional
+
 from models import Item, User, Settings
 from database import get_database
 
@@ -21,23 +20,6 @@ RABBITMQ_PORT = 5672
 RABBITMQ_QUEUE = 'inventory_queue'
 RABBITMQ_USER = 'guest'
 RABBITMQ_PASSWORD = 'guest'
-
-
-# Модели данных
-class Item(BaseModel):
-    id: Optional[int] = None
-    item: str
-    quantity: int
-    price: float
-
-
-class User(BaseModel):
-    username: str
-    password: str
-
-
-class Settings(BaseModel):
-    authjwt_secret_key: str = "your-secret-key"
 
 
 async def delete_quantity_message(message: IncomingMessage):
@@ -137,7 +119,6 @@ async def create_item(item: Item, db=Depends(get_database), Authorize: AuthJWT =
             item.quantity,
             item.price,
         )
-
         print(f"ProductAdded with id {result}")
         items_id = result
 
