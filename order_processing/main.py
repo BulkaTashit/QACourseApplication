@@ -2,13 +2,15 @@ import asyncio
 import json
 import os
 import logging
+import redis.asyncio as aioredis
 
-import aioredis
-
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from aiokafka import AIOKafkaConsumer
 
-app = FastAPI()
+# Настройка логирования
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Конфигурация Kafka
 KAFKA_BOOTSTRAP_SERVERS = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "kafka:29092")
@@ -19,54 +21,67 @@ REDIS_HOST = os.environ.get("REDIS_HOST", "redis-container")
 REDIS_PORT = int(os.environ.get("REDIS_PORT", 6379))
 
 
+# Управление жизненным циклом приложения
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Подключение к Redis
+    redis = aioredis.Redis(host=REDIS_HOST, port=REDIS_PORT)
+    await asyncio.sleep(20)  # Ожидание готовности Kafka
+    asyncio.create_task(consume(redis))  # Запуск потребителя Kafka
+    yield
+    await redis.close()  # Закрытие соединения с Redis при завершении
+
+app = FastAPI(lifespan=lifespan)
+
+
+# Корневой маршрут
+@app.get("/")
+async def read_root():
+    return {"message": "Добро пожаловать в FastAPI Kafka Consumer!"}
+
+
+# Обработка сообщений из Kafka
 async def process_order_message(order_data: bytes, redis: aioredis.Redis):
     try:
-        # Декодировать байты в строку
+        # Декодируем байты в строку
         order_data_str = order_data.decode("utf-8")
 
-        # Преобразовать строку JSON в словарь
+        # Преобразуем строку JSON в словарь
         order_data_dict = json.loads(order_data_str)
 
-        # Извлечь информацию о заказе
+        # Извлекаем информацию о заказе
         order_number = order_data_dict.get("order_number")
         quantity = order_data_dict.get("quantity")
         price = order_data_dict.get("price")
 
         if order_number and quantity and price:
-            # Записать информацию о заказе в Redis
+            # Записываем информацию о заказе в Redis
             redis_key = f"order:{order_number}"
-            await redis.hset(redis_key, "quantity", quantity)
-            await redis.hset(redis_key, "price", price)
+            await redis.hset(redis_key, mapping={"quantity": quantity, "price": price})
     except json.JSONDecodeError as e:
-        logging.error(f"Error decoding JSON: {e}")
+        logger.error(f"Ошибка декодирования JSON: {e}")
+    except Exception as e:
+        logger.error(f"Ошибка обработки сообщения: {e}")
 
 
+# Потребитель Kafka
 async def consume(redis: aioredis.Redis):
     consumer = AIOKafkaConsumer(
         ORDER_TOPIC, bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS, group_id="my-consumer-group")
     await consumer.start()
     try:
-        print("Kafka Consumer started successfully.")
+        logger.info("Kafka Consumer успешно запущен.")
         async for msg in consumer:
             try:
                 order_data = msg.value
-                logging.info(f"Received message: {order_data}")
+                logger.info(f"Получено сообщение: {order_data}")
                 await process_order_message(order_data, redis)
             except Exception as e:
-                logging.error(f"Error processing message: {e}")
+                logger.error(f"Ошибка обработки сообщения: {e}")
     finally:
         await consumer.stop()
 
-
-@app.on_event("startup")
-async def startup():
-    redis = await aioredis.create_redis_pool((REDIS_HOST, REDIS_PORT))
-
-    await asyncio.sleep(20)
-
-    asyncio.create_task(consume(redis))
-
-
+# Запуск приложения
 if __name__ == "__main__":
     import uvicorn
 
